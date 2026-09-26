@@ -81,8 +81,19 @@ class FloatingCropperService : Service() {
                 val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
                 val data: Intent? = intent.getParcelableExtra(EXTRA_RESULT_DATA)
                 if (data != null) {
-                    mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
-                    setupVirtualDisplay()
+                    runCatching {
+                        mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
+                        // WAJIB sejak Android 14 (API 34): MediaProjection harus punya callback
+                        // terdaftar SEBELUM createVirtualDisplay() dipanggil, atau akan crash
+                        // dengan IllegalStateException("Must register a callback before using...").
+                        mediaProjection?.registerCallback(object : MediaProjection.Callback() {
+                            override fun onStop() {
+                                // Sistem menghentikan projection (mis. izin dicabut) -> bersihkan semua
+                                stopEverything()
+                            }
+                        }, android.os.Handler(mainLooper))
+                        setupVirtualDisplay()
+                    }
                 }
                 showBubble()
             }
@@ -499,105 +510,4 @@ private class CropOverlayView(
         // Area gelap di luar kotak bidik
         canvas.drawRect(0f, 0f, width.toFloat(), cropRect.top.toFloat(), dimPaint)
         canvas.drawRect(0f, cropRect.bottom.toFloat(), width.toFloat(), height.toFloat(), dimPaint)
-        canvas.drawRect(0f, cropRect.top.toFloat(), cropRect.left.toFloat(), cropRect.bottom.toFloat(), dimPaint)
-        canvas.drawRect(cropRect.right.toFloat(), cropRect.top.toFloat(), width.toFloat(), cropRect.bottom.toFloat(), dimPaint)
-
-        // Border kotak bidik
-        canvas.drawRect(
-            cropRect.left.toFloat(), cropRect.top.toFloat(),
-            cropRect.right.toFloat(), cropRect.bottom.toFloat(), borderPaint
-        )
-
-        // Garis PANJANG di sisi ATAS & BAWAH
-        val longLineLen = cropRect.width() * 0.4f
-        val cx = (cropRect.left + cropRect.right) / 2f
-        canvas.drawLine(cx - longLineLen / 2, cropRect.top.toFloat(), cx + longLineLen / 2, cropRect.top.toFloat(), longLinePaint)
-        canvas.drawLine(cx - longLineLen / 2, cropRect.bottom.toFloat(), cx + longLineLen / 2, cropRect.bottom.toFloat(), longLinePaint)
-
-        // Garis PENDEK di sisi KIRI & KANAN
-        val shortLineLen = cropRect.height() * 0.25f
-        val cy = (cropRect.top + cropRect.bottom) / 2f
-        canvas.drawLine(cropRect.left.toFloat(), cy - shortLineLen / 2, cropRect.left.toFloat(), cy + shortLineLen / 2, shortLinePaint)
-        canvas.drawLine(cropRect.right.toFloat(), cy - shortLineLen / 2, cropRect.right.toFloat(), cy + shortLineLen / 2, shortLinePaint)
-
-        // Handle bulat di keempat sudut untuk resize
-        val r = 16f
-        canvas.drawCircle(cropRect.left.toFloat(), cropRect.top.toFloat(), r, cornerHandlePaint)
-        canvas.drawCircle(cropRect.right.toFloat(), cropRect.top.toFloat(), r, cornerHandlePaint)
-        canvas.drawCircle(cropRect.left.toFloat(), cropRect.bottom.toFloat(), r, cornerHandlePaint)
-        canvas.drawCircle(cropRect.right.toFloat(), cropRect.bottom.toFloat(), r, cornerHandlePaint)
-    }
-
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        val x = event.x
-        val y = event.y
-
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {
-                dragMode = detectDragMode(x, y)
-                lastTouchX = x
-                lastTouchY = y
-            }
-            MotionEvent.ACTION_MOVE -> {
-                val dx = (x - lastTouchX).toInt()
-                val dy = (y - lastTouchY).toInt()
-
-                when (dragMode) {
-                    DragMode.MOVE -> {
-                        cropRect.offset(dx, dy)
-                        clampRectWithinScreen()
-                    }
-                    DragMode.RESIZE_TL -> {
-                        cropRect.left = min(cropRect.left + dx, cropRect.right - minSize)
-                        cropRect.top = min(cropRect.top + dy, cropRect.bottom - minSize)
-                    }
-                    DragMode.RESIZE_TR -> {
-                        cropRect.right = max(cropRect.right + dx, cropRect.left + minSize)
-                        cropRect.top = min(cropRect.top + dy, cropRect.bottom - minSize)
-                    }
-                    DragMode.RESIZE_BL -> {
-                        cropRect.left = min(cropRect.left + dx, cropRect.right - minSize)
-                        cropRect.bottom = max(cropRect.bottom + dy, cropRect.top + minSize)
-                    }
-                    DragMode.RESIZE_BR -> {
-                        cropRect.right = max(cropRect.right + dx, cropRect.left + minSize)
-                        cropRect.bottom = max(cropRect.bottom + dy, cropRect.top + minSize)
-                    }
-                    DragMode.NONE -> {}
-                }
-                lastTouchX = x
-                lastTouchY = y
-                invalidate()
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                dragMode = DragMode.NONE
-            }
-        }
-        return true
-    }
-
-    private fun clampRectWithinScreen() {
-        if (cropRect.left < 0) cropRect.offset(-cropRect.left, 0)
-        if (cropRect.top < 0) cropRect.offset(0, -cropRect.top)
-        if (cropRect.right > screenWidth) cropRect.offset(screenWidth - cropRect.right, 0)
-        if (cropRect.bottom > screenHeight) cropRect.offset(0, screenHeight - cropRect.bottom)
-    }
-
-    private fun detectDragMode(x: Float, y: Float): DragMode {
-        val slop = HANDLE_TOUCH_SLOP_LOCAL
-        fun near(px: Int, py: Int) = abs(x - px) < slop && abs(y - py) < slop
-
-        return when {
-            near(cropRect.left, cropRect.top) -> DragMode.RESIZE_TL
-            near(cropRect.right, cropRect.top) -> DragMode.RESIZE_TR
-            near(cropRect.left, cropRect.bottom) -> DragMode.RESIZE_BL
-            near(cropRect.right, cropRect.bottom) -> DragMode.RESIZE_BR
-            cropRect.contains(x.toInt(), y.toInt()) -> DragMode.MOVE
-            else -> DragMode.NONE
-        }
-    }
-
-    companion object {
-        private const val HANDLE_TOUCH_SLOP_LOCAL = 70
-    }
-}
+        canvas.drawRect(0f, cropRect.top.toFloat(), cropRect.left.toFloat(), cropRect.bottom.toFloat(), dimPain
