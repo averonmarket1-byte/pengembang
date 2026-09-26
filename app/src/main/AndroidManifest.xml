@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Izin menampilkan jendela melayang di atas aplikasi lain -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"
+        tools:targetApi="m" />
+
+    <!-- Izin Foreground Service (wajib API 28+) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Tipe FGS khusus untuk MediaProjection (wajib API 34+) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+
+    <!-- Diperlukan untuk membaca layar via MediaProjection -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.JendelaMengambang"
+        android:usesCleartextTraffic="false">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.JendelaMengambang">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Foreground Service: menampung bubble, overlay cropper, MediaProjection, & OCR -->
+        <service
+            android:name=".service.FloatingCropperService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
+    </application>
+
+</manifest>

@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Jendela Mengambang</string>
+    <string name="notif_channel_name">Layanan Jendela Mengambang</string>
+    <string name="notif_content_text">Jendela mengambang sedang aktif</string>
+</resources>
